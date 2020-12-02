@@ -1,5 +1,6 @@
 <template>
   <div class="home-container">home</div>
+  <i class='toutiao toutiao-pinglun'></i>
 </template>
 
 <script>
