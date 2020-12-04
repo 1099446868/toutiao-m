@@ -1,31 +1,35 @@
 <template>
   <div class="login-container">
-    <!-- 子路由出口 -->
-    <router-view />
-    <!--/ 子路由出口 -->
     <van-nav-bar class="app-nav-bar" title="登录 / 注册" left-arrow @click-left="$router.back()"/>
     <!-- 登录表单 -->
     <van-form @submit="onLogin"
     :show-error-message="false"
     :show-error="false"
     :validate-first="true"
+    ref="login-form"
     @failed="onFailed">
       <van-field v-model="user.mobile"
       icon-prefix="toutiao"
       left-icon="shouji"
       placeholder="请输入手机号"
+      name="mobile"
+      center
       :rules="formRules.mobile"
       />
       <van-field v-model="user.code"
       clearable icon-prefix="toutiao"
       left-icon="yanzhengma"
       placeholder="请输入验证码"
+      name="code"
+      center
       :rules="formRules.code">
         <template #button>
-          <van-button class="send-btn"
+          <van-count-down v-if="isDownCodeShow" :time="1000 * 5" format="ss s" @finish="isDownCodeShow = false"/>
+          <van-button v-else class="send-btn"
           size="mini"
           round
-          @click="onSendSms()"
+          :loading="isSendCodeLodding"
+          @click.prevent="onSendSms"
           >发送验证码</van-button>
         </template>
       </van-field>
@@ -42,7 +46,7 @@
 </template>
 
 <script>
-import { login } from '@/api/user'
+import { login, sendSms } from '@/api/user'
 // import { Toast } from 'vant'
 
 export default {
@@ -52,8 +56,8 @@ export default {
   data () {
     return {
       user: {
-        mobile: '',
-        code: ''
+        mobile: 17090086870,
+        code: 246810
       },
       formRules: {
         mobile: [
@@ -64,7 +68,9 @@ export default {
           { required: true, message: '请输入验证码' },
           { pattern: /^\d{6}$/, message: '验证码格式错误' }
         ]
-      }
+      },
+      isDownCodeShow: false, // 控制倒计时显示
+      isSendCodeLodding: false // 控制lodding显示
     }
   },
   computed: {},
@@ -79,8 +85,10 @@ export default {
         duration: 0 // 展示时长(ms)，值为 0 时，toast 不会消失
       })
       try {
-        const res = await login(this.user)
-        console.log(res)
+        const { data } = await login(this.user)
+        console.log(data)
+        // 用Vuex保存共享数据
+        this.$store.commit('setUser', data.data)
         this.$toast.success('登陆成功')
       } catch (err) {
         console.log(err)
@@ -89,7 +97,7 @@ export default {
     },
 
     onFailed (error) {
-      if (error.errors[0]) {
+      if (error.errors && error.errors[0]) {
         this.$toast({
           message: error.errors[0].message,
           position: 'top'
@@ -97,8 +105,40 @@ export default {
       }
     },
 
-    onSendSms () {
+    async onSendSms () {
+      // 校验手机号
+      // this.$refs['login-form'].validate('mobile').then(
+      //   data => {
+      //     console.log(data)
+      //     this.onFailed(data)
+      //   })
+      // 使用 async-await 异步获取回调结果
+      try {
+        await this.$refs['login-form'].validate('mobile')
+        // 先lodding防止网卡了多次点击
+        this.isSendCodeLodding = true
+        // 发送验证码
+        await sendSms(this.user.mobile)
+        // 隐藏发送按钮, 显示倒计时
+        this.isDownCodeShow = true
+      } catch (err) {
+        let message = ''
+        if (err && err.response && err.response.status === 429) {
+          message = '发送太频繁了, 请稍后重试'
+        } else if (err.name === 'mobile') {
+          message = err.message
+        } else {
+          message = '发送失败, 请稍后再试'
+        }
+        this.$toast({
+          message: message,
+          position: 'top'
+        })
+      }
+      this.isSendCodeLodding = false
       // 发送验证码
+      // const sendText = $('.send-btn').find('.van-button__text').text()
+      // console.log(sendText)
     }
   }
 }
